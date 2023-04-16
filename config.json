@@ -1,6 +1,8 @@
 {
     "token": "discord-token-here",
-    "guilt_id": "discord-server-id-here",
+    "server_or_dm": "either-server-or-dm",
+    "root_id": "id-of-server/dm",
+    "channel_id": null,
     "starting_message_num": 0,
     "num_of_mesages": 100,
     "output_file_name": "output.json"

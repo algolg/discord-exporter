@@ -3,7 +3,9 @@ const axios = require('axios')
 const config = require('./config.json')
 
 const token = config.token
-const guild_id = config.guilt_id
+const server_or_dm = config.server_or_dm == "server" ? true : (config.server_or_dm == "dm" ? false : null)
+const guild_id = config.root_id
+const channel_id = config.channel_id == null ? "" : "channel_id="+config.channel_id+"&"
 const reverse = true
 const starting_message_num = config.starting_message_num
 const num_of_messages = config.num_of_mesages
@@ -11,6 +13,8 @@ const output_file_name = config.output_file_name
 
 var query = []
 var min_id = 0
+var rateLimitTotal = 0
+var rateLimitCount = 0
 
 async function sleep (seconds) {
     return new Promise((resolve) => setTimeout(resolve, seconds*1000))
@@ -18,7 +22,7 @@ async function sleep (seconds) {
 
 // gets messages from Discord's API
 async function request(offset) {
-    res = await axios.get(`https://discord.com/api/v9/guilds/${guild_id}/messages/search?min_id=${min_id}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
+    res = await axios.get(`https://discord.com/api/v9/${server_or_dm ? "guilds" : "channels"}/${guild_id}/messages/search?${channel_id}min_id=${min_id}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
         "headers": {
             "authorization": token,
             "sec-fetch-dest": "empty",
@@ -38,6 +42,8 @@ async function request(offset) {
                     "Rate limited for: " + error.response.data.retry_after + " sec" +
                     ", " + error.response.headers["x-ratelimit-scope"] + " scope"
                     )
+                rateLimitCount++
+                rateLimitTotal += error.response.data.retry_after
                 await sleep(error.response.data.retry_after)
                 return await request(offset)
             }
@@ -67,6 +73,8 @@ async function requestLoop(start, length) {
         if (i%5000 == 0) {
             min_id = await res.data.messages[24][0]["id"]
         }
+        // Discord allows 50 requests per second
+        sleep(0.02)
     }
 }
 
@@ -86,10 +94,17 @@ async function write() {
 }
 
 async function main() {
+    if (server_or_dm == null) {
+        console.log("Error: server_or_dm value must be either \"server\" or \"dm\"")
+        process.exit()
+    }
     const start = new Date()
     await requestLoop(starting_message_num, num_of_messages)
     await write()
-    console.log("Time taken: " + ((new Date()) - start)/1000 + " sec")
+    const timeTaken = ((new Date()) - start)/1000
+    console.log("Time taken: " + timeTaken + " sec")
+    console.log("Rate limited " + rateLimitCount + " times for a total of " + rateLimitTotal + " sec")
+    console.log("Rate: " + Math.round(num_of_messages*100/timeTaken)/100 + " messages per sec")
 }
 
 main()
