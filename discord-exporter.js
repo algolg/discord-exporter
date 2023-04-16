@@ -16,8 +16,9 @@ async function sleep (seconds) {
     return new Promise((resolve) => setTimeout(resolve, seconds*1000))
 }
 
+// gets messages from Discord's API
 async function request(offset) {
-    res = await axios.get(`https://canary.discord.com/api/v9/guilds/${guild_id}/messages/search?min_id=${min_id}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
+    res = await axios.get(`https://discord.com/api/v9/guilds/${guild_id}/messages/search?min_id=${min_id}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
         "headers": {
             "authorization": token,
             "sec-fetch-dest": "empty",
@@ -31,10 +32,11 @@ async function request(offset) {
         "method": "GET"
         })
         .catch(async function (error) {
+            // accounting for rate limiting
             if (await error.response.status === 429) {
                 console.log(
-                    "Rate limited for: " + error.response.data.retry_after +
-                    ", " + error.response.headers["x-ratelimit-scope"]
+                    "Rate limited for: " + error.response.data.retry_after + " sec" +
+                    ", " + error.response.headers["x-ratelimit-scope"] + " scope"
                     )
                 await sleep(error.response.data.retry_after)
                 return await request(offset)
@@ -43,6 +45,7 @@ async function request(offset) {
     return await res
 }
 
+// sends batches of requests for messages
 async function requestLoop(start, length) {
     // update min_id so it matches the last multiple of 5000 below start (Discord's search feature only allows offsets <=5000)
     if (start > 5000) {
@@ -56,6 +59,7 @@ async function requestLoop(start, length) {
         console.log(i + " start")
         res = await request(i%5000)
         updateQuery(await res.data)
+        // writes to the output file every 100 messages
         if (i%100 == 0) {
             await write()
         }
@@ -66,12 +70,14 @@ async function requestLoop(start, length) {
     }
 }
 
+// updates the query variable with the new messages
 async function updateQuery(json) {
     query = query.concat(json["messages"])
     console.log(json["messages"].length)
     console.log(query.length)
 }
 
+// writes query to the output file
 async function write() {
     fs.writeFile(`./${output_file_name}`, JSON.stringify(query), error => {
         if (error)

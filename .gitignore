@@ -106,3 +106,4 @@ dist
 # Local files
 output.json
 config-local.json
+notes.md
