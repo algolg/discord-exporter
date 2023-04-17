@@ -1,6 +1,6 @@
 const fs = require('fs')
 const axios = require('axios')
-const config = require('./config.json')
+const config = require('./config-local.json')
 
 const token = config.token
 const server_or_dm = config.server_or_dm == "server" ? true : (config.server_or_dm == "dm" ? false : null)
@@ -38,12 +38,14 @@ async function request(offset) {
         .catch(async function (error) {
             // accounting for rate limiting
             if (await error.response.status === 429) {
+                var retryAfter = error.response.data.retry_after
+                var scope = error.response.headers["x-ratelimit-scope"]
                 console.log(
-                    "Rate limited for: " + error.response.data.retry_after + " sec" +
-                    ", " + error.response.headers["x-ratelimit-scope"] + " scope"
+                    "Rate limited for: " + retryAfter + " sec" +
+                    ", " + scope + " scope"
                     )
                 rateLimitCount++
-                rateLimitTotal += error.response.data.retry_after
+                rateLimitTotal += retryAfter
                 await sleep(error.response.data.retry_after)
                 return await request(offset)
             }
@@ -66,15 +68,17 @@ async function requestLoop(start, length) {
         res = await request(i%5000)
         updateQuery(await res.data)
         // writes to the output file every 100 messages
-        if (i%100 == 0) {
+        if (i>0 && i%250 == 0) {
             await write()
+            // pause for 30 seconds every 250 messages bc of rate limiting
+            await sleep(30)
         }
         // replace min_id every 5000 messages
         if (i%5000 == 0) {
             min_id = await res.data.messages[24][0]["id"]
         }
         // Discord allows 50 requests per second
-        sleep(0.02)
+        await sleep(0.02)
     }
 }
 
@@ -103,8 +107,12 @@ async function main() {
     await write()
     const timeTaken = ((new Date()) - start)/1000
     console.log("Time taken: " + timeTaken + " sec")
-    console.log("Rate limited " + rateLimitCount + " times for a total of " + rateLimitTotal + " sec")
-    console.log("Rate: " + Math.round(num_of_messages*100/timeTaken)/100 + " messages per sec")
+    console.log(
+        "Rate limited " + rateLimitCount + 
+        " times for a total of " + Math.round(rateLimitTotal*1000)/1000 + " sec"
+        )
+    console.log("Rate: " + Math.round(num_of_messages*1000/timeTaken)/1000 + " messages per sec")
+    console.log(new Date().toLocaleString())
 }
 
 main()
