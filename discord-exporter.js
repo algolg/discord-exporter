@@ -1,6 +1,7 @@
 const fs = require('fs')
 const axios = require('axios')
-const config = require('./config-local.json')
+const config = require('./config.json')
+const prompt = require('prompt-sync')();
 
 const token = config.token
 const server_or_dm = config.server_or_dm == "server" ? true : (config.server_or_dm == "dm" ? false : null)
@@ -9,12 +10,13 @@ const channel_id = config.channel_id == null ? "" : "channel_id="+config.channel
 const reverse = true
 const starting_message_num = config.starting_message_num
 const num_of_messages = config.num_of_mesages
-const output_file_name = config.output_file_name
+const overwrite = config.overwrite
 
 var query = []
-var min_id = 0
+var minID = 0
 var rateLimitTotal = 0
 var rateLimitCount = 0
+var outputFileName = config.output_file_name + ".json"
 
 async function sleep (seconds) {
     return new Promise((resolve) => setTimeout(resolve, seconds*1000))
@@ -22,7 +24,7 @@ async function sleep (seconds) {
 
 // gets messages from Discord's API
 async function request(offset) {
-    res = await axios.get(`https://discord.com/api/v9/${server_or_dm ? "guilds" : "channels"}/${guild_id}/messages/search?${channel_id}min_id=${min_id}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
+    res = await axios.get(`https://discord.com/api/v9/${server_or_dm ? "guilds" : "channels"}/${guild_id}/messages/search?${channel_id}min_id=${minID}&include_nsfw=true${reverse ? "&sort_by=timestamp&sort_order=asc" : ""}&offset=${offset}`, {
         "headers": {
             "authorization": token,
             "sec-fetch-dest": "empty",
@@ -55,11 +57,11 @@ async function request(offset) {
 
 // sends batches of requests for messages
 async function requestLoop(start, length) {
-    // update min_id so it matches the last multiple of 5000 below start (Discord's search feature only allows offsets <=5000)
+    // update minID so it matches the last multiple of 5000 below start (Discord's search feature only allows offsets <=5000)
     if (start > 5000) {
         for (let i=0; i<start/5000; i++) {
-            min_id = (await request(5000)).data.messages[24][0]["id"]
-            console.log(i + "\t" + min_id)
+            minID = (await request(5000)).data.messages[24][0]["id"]
+            console.log(i + "\t" + minID)
         }
     }
     // send requests for messages (Discord's search feature sends messages in batches of 25)
@@ -73,9 +75,9 @@ async function requestLoop(start, length) {
             // pause for 30 seconds every 250 messages bc of rate limiting
             await sleep(30)
         }
-        // replace min_id every 5000 messages
+        // replace minID every 5000 messages
         if (i%5000 == 0) {
-            min_id = await res.data.messages[24][0]["id"]
+            minID = await res.data.messages[24][0]["id"]
         }
         // Discord allows 50 requests per second
         await sleep(0.02)
@@ -91,13 +93,29 @@ async function updateQuery(json) {
 
 // writes query to the output file
 async function write() {
-    fs.writeFile(`./${output_file_name}`, JSON.stringify(query), error => {
+    fs.writeFile(`./${outputFileName}`, JSON.stringify(query), error => {
         if (error)
             console.log(error)
     })
 }
 
+function overwriteCheck() {
+    if (fs.existsSync(outputFileName)) {
+        const replace = prompt("File " + outputFileName + " already exists. Replace? [Y/N]")
+        switch(replace.toUpperCase()) {
+            case "Y":
+            case "YES":
+                break;
+            default:
+                outputFileName = prompt("New file name (.json): ") + ".json"
+                overwriteCheck()
+                break;
+        }
+    }
+}
+
 async function main() {
+    if (!overwrite) overwriteCheck()
     if (server_or_dm == null) {
         console.log("Error: server_or_dm value must be either \"server\" or \"dm\"")
         process.exit()

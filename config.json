@@ -5,5 +5,6 @@
     "channel_id": null,
     "starting_message_num": 0,
     "num_of_mesages": 100,
-    "output_file_name": "output.json"
+    "output_file_name": "output",
+    "overwrite": false
 }
