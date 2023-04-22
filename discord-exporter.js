@@ -70,13 +70,13 @@ async function requestLoop(start, length) {
         res = await request(i%5000)
         updateQuery(await res.data)
         // writes to the output file every 100 messages
-        if (i>0 && i%250 == 0) {
+        if (i>start && i%250 == start) {
             await write()
             // pause for 30 seconds every 250 messages bc of rate limiting
             await sleep(30)
         }
         // replace minID every 5000 messages
-        if (i%5000 == 0) {
+        if (i%5000 == start) {
             minID = await res.data.messages[24][0]["id"]
         }
         // Discord allows 50 requests per second
